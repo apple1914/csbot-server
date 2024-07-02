@@ -1,41 +1,29 @@
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import cgi
+from fastapi import FastAPI, HTTPException
 
-class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+from models import UserMessagePayload
+from langchain_core.messages import  HumanMessage
+from services.bot_logic import graph
+app = FastAPI()
 
-    def do_GET(self):
-        if self.path == '/':
-            self.path = '/index.html'
-        try:
-            file_to_open = open(self.path[1:]).read()
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            self.wfile.write(bytes(file_to_open, 'utf-8'))
-        except:
-            self.send_response(404)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            self.wfile.write(b'404 - Not Found')
+@app.get("/")
+def root():
+    return {"message": "Hello World"}
 
-    def do_POST(self):
-        # Parse the form data
-        form = cgi.FieldStorage(
-            fp=self.rfile,
-            headers=self.headers,
-            environ={'REQUEST_METHOD': 'POST',
-                     'CONTENT_TYPE': self.headers['Content-Type'],
-                     }
-        )
 
-        # Get the form values
-        first_name = form.getvalue("first_name")
-        last_name = form.getvalue("last_name")
 
-        self.send_response(200)
-        self.send_header('Content-type', 'text/html')
-        self.end_headers()
-        self.wfile.write(b'Hello, ' + first_name.encode() + b' ' + last_name.encode())
 
-httpd = HTTPServer(('', 8000), SimpleHTTPRequestHandler)
-httpd.serve_forever()
+@app.post("/messages")
+def add_human_message(user_message_payload: UserMessagePayload):
+    user_message = user_message_payload.content
+    conversation_id = user_message_payload.conversation_id
+    config = {"configurable": {"thread_id": conversation_id}}
+
+    user_message = HumanMessage(
+                content=user_message
+            )
+    events = graph.stream({"messages":[user_message]},config)
+    for event in events:
+        print(event)
+    ai_message = event.messages[-1].content
+       
+    return {"ai_message": ai_message}
